@@ -15,14 +15,18 @@ class ChatRoomLayoutPage extends StatelessWidget {
     this.role = LiveParticipantRole.viewer,
     this.instantJoinSeat = false,
     this.preferredSeatIndex,
+    this.partyId,
     this.partyTitle,
+    this.roomPassword,
   });
 
   final String roomId;
   final LiveParticipantRole role;
   final bool instantJoinSeat;
   final int? preferredSeatIndex;
+  final String? partyId;
   final String? partyTitle;
+  final String? roomPassword;
 
   bool get _isHost => role == LiveParticipantRole.host;
 
@@ -38,7 +42,9 @@ class ChatRoomLayoutPage extends StatelessWidget {
             role: role,
             instantJoinSeat: instantJoinSeat,
             preferredSeatIndex: preferredSeatIndex,
+            partyId: partyId,
             partyTitle: partyTitle,
+            roomPassword: roomPassword,
             child: _isHost
                 ? HostLiveStudioPage(roomId: roomId)
                 : ViewerLiveRoomPage(roomId: roomId),

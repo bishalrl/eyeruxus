@@ -10,6 +10,7 @@ abstract final class AppRouteNames {
   static const reelsFeed = '/reels-feed';
   static const chatRoom = '/chat-room';
   static const liveBrowse = '/live-browse';
+  static const userProfile = '/user-profile';
   static const liveSession = '/live-session';
   static const liveRooms = '/live-rooms';
 

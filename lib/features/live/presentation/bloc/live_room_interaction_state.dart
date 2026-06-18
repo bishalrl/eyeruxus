@@ -71,6 +71,7 @@ class LiveRoomInteractionState extends Equatable {
     this.beautyFilterEnabled = false,
     this.backgroundBlurEnabled = false,
     this.seatRequestRejectedMessage,
+    this.walletCoins = 0,
   });
 
   final String roomId;
@@ -105,12 +106,15 @@ class LiveRoomInteractionState extends Equatable {
   final bool beautyFilterEnabled;
   final bool backgroundBlurEnabled;
   final String? seatRequestRejectedMessage;
+  final int walletCoins;
 
   bool get isViewer => !isHost && !canModerate;
   bool get canModerate => session?.canModerate ?? false;
   bool get isHost => session?.isHost ?? false;
   List<LiveSeat> get seats => session?.seats ?? const [];
   List<LiveSeatRequest> get seatRequests => session?.seatRequests ?? const [];
+  bool get hasPendingSeatRequest =>
+      seatRequests.any((request) => request.userId == 'me');
 
   LiveRoomInteractionState copyWith({
     LiveRoomLoadStatus? status,
@@ -144,6 +148,7 @@ class LiveRoomInteractionState extends Equatable {
     bool? beautyFilterEnabled,
     bool? backgroundBlurEnabled,
     String? Function()? seatRequestRejectedMessage,
+    int? walletCoins,
   }) {
     return LiveRoomInteractionState(
       roomId: roomId,
@@ -180,6 +185,7 @@ class LiveRoomInteractionState extends Equatable {
       seatRequestRejectedMessage: seatRequestRejectedMessage != null
           ? seatRequestRejectedMessage()
           : this.seatRequestRejectedMessage,
+      walletCoins: walletCoins ?? this.walletCoins,
     );
   }
 
@@ -217,5 +223,6 @@ class LiveRoomInteractionState extends Equatable {
         beautyFilterEnabled,
         backgroundBlurEnabled,
         seatRequestRejectedMessage,
+        walletCoins,
       ];
 }

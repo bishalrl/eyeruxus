@@ -1,20 +1,44 @@
 import 'package:eye_rex_us/features/live/data/datasources/live_session_local_datasource.dart';
+import 'package:eye_rex_us/features/live/data/services/live_realtime_sync_service.dart';
 import 'package:eye_rex_us/features/live/domain/entities/live_session_entities.dart';
 import 'package:eye_rex_us/features/live/domain/repositories/live_session_repository.dart';
 import 'package:eye_rex_us/features/live/presentation/layouts/live_layout_registry.dart';
 
 class LiveSessionRepositoryImpl implements LiveSessionRepository {
-  LiveSessionRepositoryImpl(this._local);
+  LiveSessionRepositoryImpl(this._local, this._sync);
 
   final LiveSessionLocalDataSource _local;
+  final LiveRealtimeSyncService _sync;
+
+  Future<LiveRoomSession> _persist(LiveRoomSession session) async {
+    await _local.saveSession(session);
+    _sync.publish(session.id, session);
+    return _sync.latest(session.id) ?? session;
+  }
 
   @override
   Future<LiveRoomSession> joinSession({
     required String roomId,
+    String? partyId,
     String? password,
     LiveParticipantRole role = LiveParticipantRole.viewer,
-  }) {
-    return _local.loadSession(roomId: roomId, role: role);
+    LiveJoinIntent joinIntent = LiveJoinIntent.watch,
+  }) async {
+    var session = await _local.loadSession(
+      roomId: roomId,
+      partyId: partyId,
+      password: password,
+      role: role,
+    );
+    if (joinIntent == LiveJoinIntent.watch &&
+        role == LiveParticipantRole.viewer) {
+      session = _local.clearLocalViewerState(session);
+      session = await _persist(session);
+    } else {
+      _sync.publish(session.id, session);
+      session = _sync.latest(session.id) ?? session;
+    }
+    return session;
   }
 
   @override
@@ -80,7 +104,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       seats: seats,
       seatRequests: [...session.seatRequests, request],
     );
-    return _local.saveSession(updated);
+    return _persist(updated);
   }
 
   @override
@@ -109,7 +133,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       participants: [...session.participants, participant],
       seatRequests: session.seatRequests.where((r) => r.id != requestId).toList(),
     );
-    return _local.saveSession(updated);
+    return _persist(updated);
   }
 
   @override
@@ -128,7 +152,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       seats: seats,
       seatRequests: session.seatRequests.where((r) => r.id != requestId).toList(),
     );
-    return _local.saveSession(updated);
+    return _persist(updated);
   }
 
   @override
@@ -144,7 +168,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       seats: seats,
       currentUserRole: LiveParticipantRole.viewer,
     );
-    return _local.saveSession(updated);
+    return _persist(updated);
   }
 
   @override
@@ -156,6 +180,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
     if (session.settings.seatsLocked) return session;
 
     final targetIndex = seatIndex ??
+        LiveLayoutRegistry.firstVacantGuestSeatIndex(session.seats) ??
         session.seats.indexWhere((s) => s.status == LiveSeatStatus.empty);
     if (targetIndex < 0) return session;
 
@@ -193,7 +218,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
           .where((r) => r.userId != 'me')
           .toList(),
     );
-    return _local.saveSession(updated);
+    return _persist(updated);
   }
 
   @override
@@ -215,7 +240,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       }
       return s;
     }).toList();
-    return _local.saveSession(
+    return _persist(
       session.copyWith(participants: participants, seats: seats),
     );
   }
@@ -227,7 +252,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
     required bool cameraOff,
   }) async {
     final session = await _findSession(sessionId);
-    return _local.saveSession(
+    return _persist(
       _patchParticipant(session, participantId, (p) => p.copyWith(isCameraOff: cameraOff)),
     );
   }
@@ -238,7 +263,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
     required String participantId,
   }) async {
     final session = await _findSession(sessionId);
-    return _local.saveSession(
+    return _persist(
       _patchParticipant(
         session,
         participantId,
@@ -269,7 +294,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       }
       return p;
     }).toList();
-    return _local.saveSession(
+    return _persist(
       session.copyWith(seats: seats, participants: participants),
     );
   }
@@ -286,7 +311,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
       }
       return s;
     }).toList();
-    return _local.saveSession(
+    return _persist(
       session.copyWith(
         seats: seats,
         participants:
@@ -301,7 +326,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
     required LiveRoomSettings settings,
   }) async {
     final session = await _findSession(sessionId);
-    return _local.saveSession(session.copyWith(settings: settings));
+    return _persist(session.copyWith(settings: settings));
   }
 
   @override
@@ -310,7 +335,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
     required String participantId,
   }) async {
     final session = await _findSession(sessionId);
-    return _local.saveSession(
+    return _persist(
       _patchParticipant(
         session,
         participantId,
@@ -327,7 +352,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
     final session = await _findSession(sessionId);
     final nextId =
         session.activeSpeakerId == participantId ? null : participantId;
-    return _local.saveSession(session.copyWith(activeSpeakerId: nextId));
+    return _persist(session.copyWith(activeSpeakerId: nextId));
   }
 
   LiveRoomSession _patchParticipant(
@@ -351,9 +376,7 @@ class LiveSessionRepositoryImpl implements LiveSessionRepository {
   @override
   Future<void> endSession({required String sessionId}) async {
     final session = await _findSession(sessionId);
-    await _local.saveSession(
-      session.copyWith(viewerCount: 0),
-    );
+    await _persist(session.copyWith(viewerCount: 0, isLive: false));
   }
 
   @override

@@ -8,7 +8,6 @@ import 'package:eye_rex_us/features/auth/presentation/bloc/login_form_cubit.dart
 import 'package:eye_rex_us/features/auth/presentation/navigation/auth_routes.dart';
 import 'package:eye_rex_us/features/auth/presentation/theme/auth_theme.dart';
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_circular_icon_button.dart';
-import 'package:eye_rex_us/features/auth/presentation/widgets/auth_erupai_logo.dart';
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_feedback.dart';
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_feedback_scope.dart';
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_page_shell.dart';
@@ -115,8 +114,6 @@ class _LoginPageBodyState extends State<_LoginPageBody> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const AuthErupaiLogo(),
-                    const SizedBox(height: 28),
                     Text(
                       l10n.authContinueWith,
                       textAlign: TextAlign.center,

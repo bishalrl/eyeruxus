@@ -67,3 +67,16 @@ class LiveRoomBrowseRouteArgs {
   final int? initialSeatRequestIndex;
   final bool instantJoinSeat;
 }
+
+/// Opens another user's public profile (from live room, feed, etc.).
+class UserProfileRouteArgs {
+  const UserProfileRouteArgs({
+    required this.userId,
+    required this.displayName,
+    required this.avatarUrl,
+  });
+
+  final String userId;
+  final String displayName;
+  final String avatarUrl;
+}

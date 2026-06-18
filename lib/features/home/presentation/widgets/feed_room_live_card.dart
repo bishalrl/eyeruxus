@@ -117,12 +117,17 @@ class FeedRoomLiveCard extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  child: LiveSeatGrid(
-                    seats: seats,
-                    compact: true,
-                    emphasizeHostSeat: true,
-                    onEmptySeatTap: onEmptySeatTap,
-                    onOccupiedSeatTap: (_, __) => onWatch(),
+                  child: GestureDetector(
+                    onTap: onWatch,
+                    behavior: HitTestBehavior.opaque,
+                    child: LiveSeatGrid(
+                      seats: seats,
+                      compact: true,
+                      emphasizeHostSeat: true,
+                      emptySeatTapOnIconOnly: true,
+                      onEmptySeatTap: onEmptySeatTap,
+                      onOccupiedSeatTap: (_, __) => onWatch(),
+                    ),
                   ),
                 ),
               ),
@@ -172,7 +177,7 @@ class FeedRoomLiveCard extends StatelessWidget {
                             ],
                             const Spacer(),
                             Text(
-                              hasVacantSeat ? 'Tap + to request seat' : 'Tap to browse',
+                              hasVacantSeat ? 'Tap to watch · + to request seat' : 'Tap to watch',
                               style: TextStyle(
                                 color: hasVacantSeat
                                     ? HomeColors.accentAmber

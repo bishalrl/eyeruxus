@@ -1,5 +1,4 @@
 import 'package:eye_rex_us/app/router/app_router.dart';
-import 'package:eye_rex_us/core/constants/app_assets.dart';
 import 'package:eye_rex_us/core/extensions/context_extensions.dart';
 import 'package:eye_rex_us/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:eye_rex_us/features/auth/presentation/bloc/auth_feedback_cubit.dart';
@@ -10,7 +9,6 @@ import 'package:eye_rex_us/features/auth/presentation/widgets/auth_feedback.dart
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_feedback_scope.dart';
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_inline_banner.dart';
 import 'package:eye_rex_us/features/auth/presentation/widgets/auth_progress_indicator.dart';
-import 'package:eye_rex_us/shared/widgets/app_asset_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -123,30 +121,7 @@ class _BodyBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (style) {
       AuthPageBackground.aura => AuthAuraBackground(child: child),
-      AuthPageBackground.peach => Stack(
-          fit: StackFit.expand,
-          children: [
-            const Positioned(
-              top: 0,
-              right: 0,
-              child: AppAssetImage(
-                asset: AppAssets.mainTop,
-                width: 220,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const Positioned(
-              bottom: 0,
-              left: 0,
-              child: AppAssetImage(
-                asset: AppAssets.mainBottom,
-                width: 140,
-                fit: BoxFit.cover,
-              ),
-            ),
-            child,
-          ],
-        ),
+      AuthPageBackground.peach => child,
       AuthPageBackground.plain => child,
     };
   }

@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import 'live_platform_entities.dart';
+
 enum LiveParticipantRole { host, cohost, moderator, viewer }
 
 enum LiveSeatStatus { empty, occupied, locked, requested }
@@ -7,6 +9,16 @@ enum LiveSeatStatus { empty, occupied, locked, requested }
 enum LiveRoomPrivacy { publicRoom, followersOnly, privateRoom, passwordProtected }
 
 enum LiveConnectionQuality { excellent, good, fair, poor }
+
+/// How the local user enters a live session.
+enum LiveJoinIntent {
+  /// Watch only — no seat, no pending request.
+  watch,
+  /// Request a seat after join (host must approve).
+  requestSeat,
+  /// Take a seat immediately (party testing).
+  instantSeat,
+}
 
 enum LiveRoomCategory {
   chatting,
@@ -175,6 +187,7 @@ class LiveRoomSession extends Equatable {
     this.activeSpeakerId,
     this.pinnedMessageId,
     this.currentUserRole = LiveParticipantRole.viewer,
+    this.meta = const LiveSessionMeta(),
   });
 
   final String id;
@@ -196,6 +209,7 @@ class LiveRoomSession extends Equatable {
   final String? activeSpeakerId;
   final String? pinnedMessageId;
   final LiveParticipantRole currentUserRole;
+  final LiveSessionMeta meta;
 
   bool get isHost => currentUserRole == LiveParticipantRole.host;
 
@@ -215,6 +229,8 @@ class LiveRoomSession extends Equatable {
     String? activeSpeakerId,
     String? Function()? pinnedMessageId,
     LiveParticipantRole? currentUserRole,
+    LiveSessionMeta? meta,
+    bool? isLive,
   }) {
     return LiveRoomSession(
       id: id,
@@ -232,16 +248,17 @@ class LiveRoomSession extends Equatable {
       seatRequests: seatRequests ?? this.seatRequests,
       settings: settings ?? this.settings,
       coverImageUrl: coverImageUrl,
-      isLive: isLive,
+      isLive: isLive ?? this.isLive,
       activeSpeakerId: activeSpeakerId ?? this.activeSpeakerId,
       pinnedMessageId:
           pinnedMessageId != null ? pinnedMessageId() : this.pinnedMessageId,
       currentUserRole: currentUserRole ?? this.currentUserRole,
+      meta: meta ?? this.meta,
     );
   }
 
   @override
-  List<Object?> get props => [id, viewerCount, seats, seatRequests, settings];
+  List<Object?> get props => [id, viewerCount, seats, seatRequests, settings, meta];
 }
 
 class LiveRoomListing extends Equatable {

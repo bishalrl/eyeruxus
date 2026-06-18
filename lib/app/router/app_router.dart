@@ -22,6 +22,7 @@ import 'package:eye_rex_us/features/host_money/presentation/pages/make_money_pag
 import 'package:eye_rex_us/features/settings/presentation/pages/settings_extra_screens.dart';
 import 'package:eye_rex_us/features/settings/presentation/pages/settings_page.dart';
 import 'package:eye_rex_us/features/settings/presentation/pages/settings_screens.dart';
+import 'package:eye_rex_us/features/user/presentation/pages/public_user_profile_page.dart';
 import 'package:eye_rex_us/features/store/presentation/pages/store_page.dart';
 import 'package:eye_rex_us/features/store/presentation/pages/store_screens.dart';
 import 'package:eye_rex_us/features/wallet/presentation/pages/wallet_page.dart';
@@ -129,6 +130,7 @@ abstract final class AppRouter {
             role: args.role,
             instantJoinSeat: args.instantJoinSeat,
             preferredSeatIndex: args.preferredSeatIndex,
+            partyId: args.partyId,
             partyTitle: args.partyTitle,
           ),
           settings,
@@ -140,6 +142,9 @@ abstract final class AppRouter {
           settings: settings,
           builder: (_) => LiveRoomBrowseFeedPage(args: args),
         );
+      case AppRouteNames.userProfile:
+        final args = settings.arguments! as UserProfileRouteArgs;
+        return _route(PublicUserProfilePage(args: args), settings);
       case AppRouteNames.liveSession:
         final type = settings.arguments! as LiveSessionType;
         return _route(LiveSessionRegistry.buildPage(type: type), settings);

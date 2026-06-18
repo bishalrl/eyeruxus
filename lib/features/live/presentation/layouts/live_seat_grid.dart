@@ -17,6 +17,7 @@ class LiveSeatGrid extends StatelessWidget {
     this.onOccupiedSeatTap,
     this.compact = false,
     this.emphasizeHostSeat = false,
+    this.emptySeatTapOnIconOnly = false,
   });
 
   final List<LiveSeat> seats;
@@ -26,6 +27,9 @@ class LiveSeatGrid extends StatelessWidget {
   final LiveGuestMenuTap? onOccupiedSeatTap;
   final bool compact;
   final bool emphasizeHostSeat;
+
+  /// When true, only the + icon on empty seats is tappable (card watch vs seat request).
+  final bool emptySeatTapOnIconOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -66,11 +70,19 @@ class LiveSeatGrid extends StatelessWidget {
                       index == 0 &&
                       participant?.role == LiveParticipantRole.host,
                   showLocalCamera: _isLocalCameraParticipant(participant),
+                  emptySeatTapOnIconOnly: emptySeatTapOnIconOnly,
                   onTap: seat.status == LiveSeatStatus.empty && onEmptySeatTap != null
-                      ? () => onEmptySeatTap!(index)
+                      ? emptySeatTapOnIconOnly
+                          ? null
+                          : () => onEmptySeatTap!(index)
                       : canTapOccupied
                           ? () => onOccupiedSeatTap!(index, participant)
                           : null,
+                  onEmptySeatIconTap: seat.status == LiveSeatStatus.empty &&
+                          onEmptySeatTap != null &&
+                          emptySeatTapOnIconOnly
+                      ? () => onEmptySeatTap!(index)
+                      : null,
                   onGuestMenuTap: showGuestMenu
                       ? () => onGuestMenuTap!(index, participant)
                       : null,
@@ -95,7 +107,9 @@ class _SeatTile extends StatelessWidget {
     required this.isActiveSpeaker,
     this.isHostSeat = false,
     this.showLocalCamera = false,
+    this.emptySeatTapOnIconOnly = false,
     this.onTap,
+    this.onEmptySeatIconTap,
     this.onGuestMenuTap,
   });
 
@@ -103,7 +117,9 @@ class _SeatTile extends StatelessWidget {
   final bool isActiveSpeaker;
   final bool isHostSeat;
   final bool showLocalCamera;
+  final bool emptySeatTapOnIconOnly;
   final VoidCallback? onTap;
+  final VoidCallback? onEmptySeatIconTap;
   final VoidCallback? onGuestMenuTap;
 
   @override
@@ -182,15 +198,33 @@ class _SeatTile extends StatelessWidget {
                 )
               else
                 Center(
-                  child: Icon(
-                    seat.status == LiveSeatStatus.locked
-                        ? Icons.lock_outline
-                        : seat.status == LiveSeatStatus.requested
-                            ? Icons.hourglass_top
-                            : Icons.add,
-                    color: Colors.white54,
-                    size: 28,
-                  ),
+                  child: onEmptySeatIconTap != null
+                      ? Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onEmptySeatIconTap,
+                            customBorder: const CircleBorder(),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Icon(
+                                seat.status == LiveSeatStatus.locked
+                                    ? Icons.lock_outline
+                                    : Icons.add,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          seat.status == LiveSeatStatus.locked
+                              ? Icons.lock_outline
+                              : seat.status == LiveSeatStatus.requested
+                                  ? Icons.hourglass_top
+                                  : Icons.add,
+                          color: Colors.white54,
+                          size: 28,
+                        ),
                 ),
               if (participant != null)
                 Positioned(

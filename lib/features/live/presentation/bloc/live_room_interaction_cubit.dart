@@ -2,8 +2,12 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:eye_rex_us/features/live/data/datasources/live_gift_local_datasource.dart';
+import 'package:eye_rex_us/features/live/data/services/live_economy_service.dart';
+import 'package:eye_rex_us/features/live/data/services/live_realtime_sync_service.dart';
+import 'package:eye_rex_us/features/live/domain/entities/live_platform_entities.dart';
 import 'package:eye_rex_us/features/live/domain/entities/live_room_comment.dart';
 import 'package:eye_rex_us/features/live/domain/entities/live_session_entities.dart';
+import 'package:eye_rex_us/features/live/domain/repositories/live_platform_repository.dart';
 import 'package:eye_rex_us/features/live/domain/repositories/live_session_repository.dart';
 import 'package:eye_rex_us/features/live/presentation/bloc/live_media_cubit.dart';
 import 'package:eye_rex_us/features/live/presentation/layouts/live_layout_registry.dart';
@@ -16,22 +20,35 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
     required String roomId,
     required LiveSessionRepository sessionRepository,
     required LiveMediaCubit mediaCubit,
+    LivePlatformRepository? platformRepository,
+    LiveEconomyService? economyService,
+    LiveRealtimeSyncService? syncService,
     int seatCount = 8,
     LiveParticipantRole role = LiveParticipantRole.viewer,
     bool instantJoinSeat = false,
+    bool requestSeatOnJoin = false,
     int? preferredSeatIndex,
+    String? partyId,
     String? partyTitle,
+    String? roomPassword,
   })  : _sessionRepository = sessionRepository,
+        _platform = platformRepository,
+        _economy = economyService,
+        _sync = syncService ?? LiveRealtimeSyncService.instance,
         _mediaCubit = mediaCubit,
         _role = role,
         _instantJoinSeat = instantJoinSeat,
+        _requestSeatOnJoin = requestSeatOnJoin,
         _preferredSeatIndex = preferredSeatIndex,
+        _partyId = partyId,
         _partyTitle = partyTitle,
+        _roomPassword = roomPassword,
         super(
           LiveRoomInteractionState(
             roomId: roomId,
             seatCount: seatCount,
             comments: LiveGiftLocalDataSource.initialComments(roomId),
+            walletCoins: economyService?.coins ?? 0,
           ),
         ) {
     _mediaSubscription = _mediaCubit.stream.listen(_onMediaChanged);
@@ -39,16 +56,25 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
   }
 
   final LiveSessionRepository _sessionRepository;
+  final LivePlatformRepository? _platform;
+  final LiveEconomyService? _economy;
+  final LiveRealtimeSyncService _sync;
   final LiveMediaCubit _mediaCubit;
   final LiveParticipantRole _role;
   final bool _instantJoinSeat;
+  final bool _requestSeatOnJoin;
   final int? _preferredSeatIndex;
+  final String? _partyId;
   final String? _partyTitle;
+  final String? _roomPassword;
   final _random = Random();
   final List<Timer> _timers = [];
   StreamSubscription<LiveMediaState>? _mediaSubscription;
+  StreamSubscription<LiveRoomSession>? _syncSubscription;
+  Timer? _pkTimer;
 
   LiveMediaCubit get mediaCubit => _mediaCubit;
+  int get walletCoins => _economy?.coins ?? state.walletCoins;
 
   void _onMediaChanged(LiveMediaState media) {
     if (isClosed) return;
@@ -74,6 +100,11 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
   }
 
   bool _hasLocalSeat(LiveRoomSession session) => _sessionHasLocalCameraSeat(session);
+
+  bool get _allowsInstantSeatJoinOnTap {
+    final partyId = _partyId;
+    return _instantJoinSeat || (partyId != null && partyId.isNotEmpty);
+  }
 
   static bool isHostParticipant(LiveParticipant participant) =>
       participant.role == LiveParticipantRole.host ||
@@ -127,7 +158,14 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
     try {
       var session = await _sessionRepository.joinSession(
         roomId: state.roomId,
+        partyId: _partyId,
+        password: _roomPassword,
         role: _role,
+        joinIntent: _instantJoinSeat
+            ? LiveJoinIntent.instantSeat
+            : _requestSeatOnJoin
+                ? LiveJoinIntent.requestSeat
+                : LiveJoinIntent.watch,
       );
       if (_partyTitle != null && _partyTitle.trim().isNotEmpty) {
         session = session.copyWith(title: _partyTitle);
@@ -138,6 +176,9 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
           seatIndex: _preferredSeatIndex,
         );
       }
+      final peak = session.meta.peakViewerCount > session.viewerCount
+          ? session.meta.peakViewerCount
+          : session.viewerCount;
       emit(
         state.copyWith(
           status: LiveRoomLoadStatus.ready,
@@ -146,17 +187,28 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
           viewerCount: session.viewerCount + (_instantJoinSeat ? 1 : 0),
           likeCount: session.likeCount,
           hasJoined: true,
+          walletCoins: _economy?.coins ?? state.walletCoins,
           hostAnalytics: LiveHostAnalytics(
             currentViewers: session.viewerCount,
-            peakViewers: session.viewerCount,
+            peakViewers: peak,
             followersCount: 1200 + _random.nextInt(800),
+            liveDurationSeconds: session.meta.startedAt != null
+                ? DateTime.now().difference(session.meta.startedAt!).inSeconds
+                : 0,
           ),
           message: () => _instantJoinSeat && _hasLocalSeat(session)
               ? 'Joined party — you are on stage'
               : null,
         ),
       );
+      _subscribeToSessionSync(session.id);
+      _startNetworkMonitor();
+      if (session.meta.pkBattle != null &&
+          session.meta.pkBattle!.phase != PkBattlePhase.idle) {
+        _startPkTimer();
+      }
       if (!_instantJoinSeat &&
+          _requestSeatOnJoin &&
           _preferredSeatIndex != null &&
           _role == LiveParticipantRole.viewer) {
         await requestSeat(_preferredSeatIndex);
@@ -169,13 +221,103 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
       _scheduleJoinBanner('Vivek the king', const Duration(seconds: 2));
       _scheduleJoinBanner('Priya', const Duration(seconds: 5));
     } catch (e) {
+      final message = e.toString().contains('password')
+          ? 'Invalid room password'
+          : e.toString();
       emit(
         state.copyWith(
           status: LiveRoomLoadStatus.error,
-          errorMessage: () => e.toString(),
+          errorMessage: () => message,
         ),
       );
     }
+  }
+
+  void _subscribeToSessionSync(String sessionId) {
+    _syncSubscription?.cancel();
+    _syncSubscription = _sync.watch(sessionId).listen((remote) {
+      if (isClosed) return;
+      final local = state.session;
+      if (local == null) {
+        emit(state.copyWith(session: remote, viewerCount: remote.viewerCount));
+        return;
+      }
+      if (remote.meta.syncVersion <= local.meta.syncVersion) {
+        return;
+      }
+      final merged = _hasLocalSeat(local) && !_hasLocalSeat(remote)
+          ? _mergeLocalSeatInto(remote, local)
+          : remote;
+      emit(
+        state.copyWith(
+          session: merged,
+          viewerCount: merged.viewerCount,
+          hostAnalytics: state.hostAnalytics.copyWith(
+            currentViewers: remote.viewerCount,
+            peakViewers: remote.meta.peakViewerCount,
+          ),
+        ),
+      );
+    });
+  }
+
+  LiveRoomSession _mergeLocalSeatInto(
+    LiveRoomSession remote,
+    LiveRoomSession local,
+  ) {
+    final localSeat = local.seats.indexWhere((s) => s.participant?.id == 'me');
+    if (localSeat < 0) return remote;
+
+    final seats = List<LiveSeat>.from(remote.seats);
+    seats[localSeat] = local.seats[localSeat];
+    final participants = [
+      ...remote.participants.where((p) => p.id != 'me'),
+      ...local.participants.where((p) => p.id == 'me'),
+    ];
+    return remote.copyWith(
+      seats: seats,
+      participants: participants,
+      currentUserRole: LiveParticipantRole.cohost,
+    );
+  }
+
+  void _startNetworkMonitor() {
+    _timers.add(
+      Timer.periodic(const Duration(seconds: 20), (_) {
+        if (isClosed || state.status != LiveRoomLoadStatus.ready) return;
+        if (_random.nextDouble() < 0.12) {
+          emit(
+            state.copyWith(
+              connectionQuality: LiveConnectionQuality.poor,
+            ),
+          );
+          _timers.add(
+            Timer(const Duration(seconds: 4), () {
+              if (isClosed) return;
+              emit(state.copyWith(connectionQuality: LiveConnectionQuality.good));
+            }),
+          );
+        }
+      }),
+    );
+  }
+
+  void _startPkTimer() {
+    _pkTimer?.cancel();
+    _pkTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (isClosed || _platform == null) return;
+      final session = state.session;
+      if (session == null) return;
+      final pk = session.meta.pkBattle;
+      if (pk == null || pk.phase == PkBattlePhase.idle || pk.phase == PkBattlePhase.finished) {
+        return;
+      }
+      final updated = await _platform.tickPkBattle(sessionId: session.id);
+      emit(state.copyWith(session: updated));
+      if (updated.meta.pkBattle?.phase == PkBattlePhase.finished) {
+        _pkTimer?.cancel();
+      }
+    });
   }
 
   void _startHostLiveTimer() {
@@ -212,21 +354,38 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
     for (final timer in _timers) {
       timer.cancel();
     }
+    _pkTimer?.cancel();
+    await _syncSubscription?.cancel();
     await _mediaSubscription?.cancel();
+    final sessionId = state.session?.id;
+    if (sessionId != null) {
+      _sync.disposeKey(sessionId);
+    }
     return super.close();
   }
 
   Future<void> rejoin() async {
     if (state.session == null) return;
-    emit(state.copyWith(status: LiveRoomLoadStatus.loading));
+    emit(
+      state.copyWith(
+        status: LiveRoomLoadStatus.loading,
+        connectionQuality: LiveConnectionQuality.fair,
+      ),
+    );
     try {
       final session =
           await _sessionRepository.rejoinSession(sessionId: state.session!.id);
       await _mediaCubit.recoverStream();
+      final bumped = session.copyWith(
+        meta: session.meta.copyWith(
+          reconnectGeneration: session.meta.reconnectGeneration + 1,
+          connectionDegraded: false,
+        ),
+      );
       emit(
         state.copyWith(
           status: LiveRoomLoadStatus.ready,
-          session: session,
+          session: bumped,
           connectionQuality: LiveConnectionQuality.good,
         ),
       );
@@ -234,6 +393,7 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
       emit(
         state.copyWith(
           status: LiveRoomLoadStatus.error,
+          connectionQuality: LiveConnectionQuality.poor,
           errorMessage: () => 'Reconnection failed',
         ),
       );
@@ -299,8 +459,10 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
       emit(state.copyWith(message: () => 'Chat is disabled'));
       return;
     }
-    final trimmed = text.trim();
+    var trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    final filtered = _platform?.filterChatKeyword(trimmed);
+    if (filtered != null) trimmed = filtered;
     final comment = LiveRoomComment(
       id: 'c_${DateTime.now().millisecondsSinceEpoch}',
       authorName: 'You',
@@ -332,6 +494,62 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
     final gift = LiveGiftLocalDataSource.giftById(giftId);
     if (gift == null) return;
 
+    if (_economy != null && !_economy.spendCoins(gift.coinCost)) {
+      emit(state.copyWith(message: () => 'Not enough coins — recharge in Wallet'));
+      return;
+    }
+
+    final combo = _economy?.registerGiftCombo(giftId);
+    final hostName = state.session?.host.name ?? 'Host';
+    _economy?.recordGiftToLeaderboard(hostName: hostName, coinValue: gift.coinCost);
+    final diamondShare = (gift.coinCost * 0.4).round();
+    if (_economy != null) {
+      _economy.creditHostDiamonds(diamondShare);
+    }
+
+    final pk = state.session?.meta.pkBattle;
+    if (_platform != null &&
+        state.session != null &&
+        pk != null &&
+        pk.phase != PkBattlePhase.idle &&
+        pk.phase != PkBattlePhase.finished) {
+      unawaited(
+        _platform.tickPkBattle(
+          sessionId: state.session!.id,
+          hostGiftCoins: gift.coinCost,
+        ),
+      );
+    }
+
+    final ranks = [...?state.session?.meta.contributorRanks];
+    final meIndex = ranks.indexWhere((r) => r.userId == 'me');
+    if (meIndex >= 0) {
+      final r = ranks[meIndex];
+      ranks[meIndex] = LiveContributorRank(
+        userId: r.userId,
+        userName: r.userName,
+        coinsSent: r.coinsSent + gift.coinCost,
+        avatarUrl: r.avatarUrl,
+      );
+    } else {
+      ranks.add(
+        LiveContributorRank(
+          userId: 'me',
+          userName: 'You',
+          coinsSent: gift.coinCost,
+        ),
+      );
+    }
+
+    final session = state.session;
+    final updatedSession = session?.copyWith(
+      meta: session.meta.copyWith(
+        contributorRanks: ranks,
+        hostDiamonds: session.meta.hostDiamonds + diamondShare,
+      ),
+    );
+
+    final comboLabel = combo != null && combo.multiplier > 1 ? ' x${combo.count}' : '';
     final event = LiveGiftEvent(
       id: 'g_${DateTime.now().millisecondsSinceEpoch}',
       gift: gift,
@@ -342,8 +560,10 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
 
     emit(
       state.copyWith(
+        session: updatedSession,
         giftEvents: events,
         giftPanelOpen: false,
+        walletCoins: _economy?.coins ?? state.walletCoins,
         hostAnalytics: state.hostAnalytics.copyWith(
           giftsReceived: state.hostAnalytics.giftsReceived + 1,
           giftEarnings: state.hostAnalytics.giftEarnings + gift.coinCost,
@@ -355,7 +575,7 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
           LiveRoomComment(
             id: event.id,
             authorName: 'You',
-            text: 'sent ${gift.emoji} ${gift.name}',
+            text: 'sent ${gift.emoji} ${gift.name}$comboLabel',
             timeLabel: 'now',
           ),
         ],
@@ -469,7 +689,7 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
       return;
     }
 
-    if (_instantJoinSeat) {
+    if (_allowsInstantSeatJoinOnTap) {
       final updated = await _sessionRepository.instantJoinSeat(
         sessionId: session.id,
         seatIndex: seatIndex,
@@ -725,17 +945,31 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
       emit(state.copyWith(message: () => 'Only the host can end the live'));
       return;
     }
+    final duration = state.hostAnalytics.liveDurationSeconds;
+    final recording = await _platform?.endSessionWithRecording(
+      sessionId: session.id,
+      durationSeconds: duration,
+    );
     await _sessionRepository.endSession(sessionId: session.id);
     await _mediaCubit.stopCameraPreview();
+    _pkTimer?.cancel();
     emit(
       state.copyWith(
         status: LiveRoomLoadStatus.ended,
-        message: () => 'Live ended',
+        message: () => recording != null
+            ? 'Live ended — replay available'
+            : 'Live ended',
         hostControlsOpen: false,
         analyticsOpen: false,
         giftPanelOpen: false,
         giftDashboardOpen: false,
         commentSheetOpen: false,
+        session: session.copyWith(
+          isLive: false,
+          meta: session.meta.copyWith(
+            recordingUrl: () => recording?.playbackUrl,
+          ),
+        ),
       ),
     );
   }
@@ -758,15 +992,76 @@ class LiveRoomInteractionCubit extends Cubit<LiveRoomInteractionState> {
     emit(state.copyWith(unreadInbox: 0, commentSheetOpen: true));
   }
 
-  void share() => emit(state.copyWith(message: () => 'shared'));
+  void share() {
+    final session = state.session;
+    if (session == null) return;
+    final link = _platform?.buildLiveDeepLink(
+          sessionKey: session.id,
+          partyId: _partyId,
+        ) ??
+        'eyerexus://live/${session.id}';
+    emit(state.copyWith(message: () => 'Link copied: $link'));
+  }
 
   void clearMessage() => emit(state.copyWith(message: () => null));
 
-  void reportUser(String userId) {
-    emit(state.copyWith(message: () => 'Report submitted'));
+  Future<void> reportUser(
+    String userId, {
+    LiveReportReason reason = LiveReportReason.other,
+  }) async {
+    final session = state.session;
+    if (session == null || _platform == null) {
+      emit(state.copyWith(message: () => 'Report submitted'));
+      return;
+    }
+    await _platform.reportLive(
+      LiveReportRequest(
+        sessionId: session.id,
+        reportedUserId: userId,
+        reason: reason,
+      ),
+    );
+    emit(state.copyWith(message: () => 'Report submitted — thank you'));
   }
 
-  void blockUser(String userId) {
-    emit(state.copyWith(message: () => 'User blocked'));
+  Future<void> blockUser(String userId) async {
+    await _platform?.banUser(
+      userId: userId,
+      scope: LiveBanScope.room,
+      sessionId: state.session?.id,
+    );
+    emit(state.copyWith(message: () => 'User blocked for this room'));
+  }
+
+  Future<void> startPkBattle(String opponentHostName) async {
+    final session = state.session;
+    if (session == null || !state.isHost || _platform == null) return;
+    final updated = await _platform.startPkInvite(
+      sessionId: session.id,
+      opponentHostName: opponentHostName,
+    );
+    emit(state.copyWith(session: updated));
+    _startPkTimer();
+  }
+
+  Future<void> applyPartyTheme(String themeId) async {
+    final session = state.session;
+    if (session == null || _platform == null) return;
+    final updated = await _platform.applyPartyTheme(
+      sessionId: session.id,
+      themeId: themeId,
+    );
+    emit(state.copyWith(session: updated, message: () => 'Party theme applied'));
+  }
+
+  Future<void> inviteFriendToSeat(String friendName, int seatIndex) async {
+    final session = state.session;
+    if (session == null || _platform == null) return;
+    await _platform.inviteFriendToSeat(
+      sessionId: session.id,
+      friendName: friendName,
+      seatIndex: seatIndex,
+    );
+    emit(state.copyWith(message: () => 'Invite sent to $friendName'));
   }
 }

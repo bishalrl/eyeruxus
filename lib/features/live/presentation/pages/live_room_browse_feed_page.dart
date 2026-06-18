@@ -1,5 +1,4 @@
 import 'package:eye_rex_us/app/router/app_route_args.dart';
-import 'package:eye_rex_us/app/router/app_router.dart';
 import 'package:eye_rex_us/features/live/presentation/viewer/viewer_live_room_page.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_room_interaction_scope.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/live_session_scope.dart';
@@ -36,8 +35,6 @@ class _LiveRoomBrowseFeedPageState extends State<LiveRoomBrowseFeedPage> {
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.paddingOf(context).top;
-
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
@@ -53,6 +50,10 @@ class _LiveRoomBrowseFeedPageState extends State<LiveRoomBrowseFeedPage> {
                 final entry = args.entries[index];
                 final isInitial = index == args.initialIndex;
 
+                final requestSeatOnJoin = isInitial &&
+                    args.initialSeatRequestIndex != null &&
+                    !args.instantJoinSeat;
+
                 return LiveSessionScope(
                   key: ValueKey('live_browse_${entry.roomId}_$index'),
                   chatRoom: true,
@@ -60,8 +61,10 @@ class _LiveRoomBrowseFeedPageState extends State<LiveRoomBrowseFeedPage> {
                     roomId: entry.roomId,
                     child: LiveRoomInteractionScope(
                       roomId: entry.roomId,
+                      partyId: entry.partyId,
                       partyTitle: entry.title,
                       instantJoinSeat: args.instantJoinSeat && isInitial,
+                      requestSeatOnJoin: requestSeatOnJoin,
                       preferredSeatIndex:
                           isInitial ? args.initialSeatRequestIndex : null,
                       child: ViewerLiveRoomPage(roomId: entry.roomId),
@@ -69,14 +72,6 @@ class _LiveRoomBrowseFeedPageState extends State<LiveRoomBrowseFeedPage> {
                   ),
                 );
               },
-            ),
-            Positioned(
-              top: topPadding + 4,
-              left: 4,
-              child: IconButton(
-                onPressed: () => AppRouter.maybePop(context),
-                icon: const Icon(Icons.close, color: Colors.white),
-              ),
             ),
             if (args.entries.length > 1)
               Positioned(
@@ -93,10 +88,7 @@ class _LiveRoomBrowseFeedPageState extends State<LiveRoomBrowseFeedPage> {
                     children: [
                       Icon(Icons.swipe_vertical, color: Colors.white70, size: 16),
                       SizedBox(width: 6),
-                      Text(
-                        'Swipe for next live',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
-                      ),
+                    
                     ],
                   ),
                 ),

@@ -59,7 +59,11 @@ import '../../features/guardian_vip/domain/usecases/get_vip_tiers_usecase.dart';
 import '../../features/guardian_vip/presentation/bloc/guardian_vip_bloc.dart';
 import '../../features/guardian_vip/presentation/bloc/guardian_vip_tab_cubit.dart';
 import '../../features/live/data/datasources/live_session_local_datasource.dart';
+import '../../features/live/data/repositories/live_platform_repository_impl.dart';
 import '../../features/live/data/repositories/live_session_repository_impl.dart';
+import '../../features/live/data/services/live_economy_service.dart';
+import '../../features/live/data/services/live_realtime_sync_service.dart';
+import '../../features/live/domain/repositories/live_platform_repository.dart';
 import '../../features/live/domain/repositories/live_session_repository.dart';
 import '../../features/live/presentation/bloc/live_discovery_cubit.dart';
 import '../../features/live/presentation/services/live_permissions_service.dart';
@@ -163,8 +167,15 @@ Future<void> configureDependencies() async {
   sl.registerLazySingleton<LiveSessionLocalDataSource>(
     LiveSessionLocalDataSourceImpl.new,
   );
+  sl.registerLazySingleton<LiveRealtimeSyncService>(
+    () => LiveRealtimeSyncService.instance,
+  );
+  sl.registerLazySingleton<LiveEconomyService>(LiveEconomyService.new);
   sl.registerLazySingleton<LiveSessionRepository>(
-    () => LiveSessionRepositoryImpl(sl()),
+    () => LiveSessionRepositoryImpl(sl(), sl()),
+  );
+  sl.registerLazySingleton<LivePlatformRepository>(
+    () => LivePlatformRepositoryImpl(sl(), sl(), sl(), sl()),
   );
   sl.registerLazySingleton<LivePermissionsService>(
     LivePermissionsServiceImpl.new,

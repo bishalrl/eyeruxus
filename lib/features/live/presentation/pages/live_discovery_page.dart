@@ -15,15 +15,27 @@ class LiveDiscoveryPage extends StatefulWidget {
 
 class _LiveDiscoveryPageState extends State<LiveDiscoveryPage> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     context.read<LiveDiscoveryCubit>().load();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    if (_scrollController.offset > max - 200) {
+      context.read<LiveDiscoveryCubit>().loadMore();
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -39,6 +51,7 @@ class _LiveDiscoveryPageState extends State<LiveDiscoveryPage> {
               color: LiveRoomTheme.accent,
               onRefresh: context.read<LiveDiscoveryCubit>().refresh,
               child: CustomScrollView(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader(context, state)),
@@ -62,6 +75,15 @@ class _LiveDiscoveryPageState extends State<LiveDiscoveryPage> {
                     _section('Following', state.following),
                     _section('Nearby', state.nearby),
                     _section('New Creators', state.newCreators),
+                    if (state.isLoadingMore)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(
+                            child: CircularProgressIndicator(color: LiveRoomTheme.accent),
+                          ),
+                        ),
+                      ),
                     const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
                 ],
@@ -119,6 +141,24 @@ class _LiveDiscoveryPageState extends State<LiveDiscoveryPage> {
                       selectedColor: LiveRoomTheme.accent,
                     ),
                   ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: const Text('Following'),
+                    selected: state.showFollowing,
+                    onSelected: cubit.toggleFollowing,
+                    selectedColor: LiveRoomTheme.accent.withValues(alpha: 0.6),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: const Text('Friends live'),
+                    selected: state.showFriends,
+                    onSelected: cubit.toggleFriends,
+                    selectedColor: LiveRoomTheme.accent.withValues(alpha: 0.6),
+                  ),
+                ),
                 _filterChip(
                   'English',
                   state.languageFilter,

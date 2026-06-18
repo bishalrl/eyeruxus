@@ -46,6 +46,7 @@ abstract final class HomeLiveRoutes {
               (room) => LiveRoomBrowseEntry(
                 roomId: HomeFeedRoomResolver.layoutRoomIdFor(room),
                 title: room.title,
+                partyId: room.id,
               ),
             )
             .toList(),

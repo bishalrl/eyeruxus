@@ -1,10 +1,13 @@
 import 'package:eye_rex_us/core/extensions/context_extensions.dart';
 import 'package:eye_rex_us/features/live/presentation/bloc/live_room_interaction_cubit.dart';
 import 'package:eye_rex_us/features/live/presentation/bloc/live_room_interaction_state.dart';
+import 'package:eye_rex_us/features/live/presentation/viewer/widgets/guest_seat_floating_controls.dart';
 import 'package:eye_rex_us/features/live/presentation/viewer/widgets/viewer_live_bottom_bar.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_comment_strip.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_gift_panel.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_like_burst_layer.dart';
+import 'package:eye_rex_us/features/live/presentation/widgets/platform/live_connection_banner.dart';
+import 'package:eye_rex_us/features/live/presentation/widgets/platform/live_pk_battle_overlay.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_room_bottom_bar.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_room_sheets.dart';
 import 'package:flutter/material.dart';
@@ -102,9 +105,20 @@ class ViewerLiveOverlay extends StatelessWidget {
       ],
       child: BlocBuilder<LiveRoomInteractionCubit, LiveRoomInteractionState>(
         builder: (context, state) {
+          final cubit = context.read<LiveRoomInteractionCubit>();
           return Positioned.fill(
             child: Stack(
               children: [
+                if (state.session?.meta.pkBattle != null)
+                  LivePkBattleOverlay(
+                    pk: state.session!.meta.pkBattle!,
+                    hostName: state.session!.host.name,
+                  ),
+                LiveConnectionBanner(
+                  quality: state.connectionQuality,
+                  onRetry: cubit.rejoin,
+                ),
+                const GuestSeatFloatingControls(),
                 IgnorePointer(child: LiveLikeBurstLayer(bursts: state.likeBursts)),
                 Positioned(
                   left: 8,

@@ -1,3 +1,5 @@
+import 'package:eye_rex_us/features/live/domain/entities/live_session_entities.dart';
+
 /// Unified layout registry for all live room seat counts.
 abstract final class LiveLayoutRegistry {
   static const supportedSeatCounts = [1, 2, 3, 4, 6, 8, 16, 32];
@@ -36,4 +38,22 @@ abstract final class LiveLayoutRegistry {
 
   static bool isSupported(int seatCount) =>
       supportedSeatCounts.contains(seatCount);
+
+  static int hostSeatIndex(int seatCount) => 0;
+
+  /// Guest seats fill counter-clockwise from the last grid index.
+  static List<int> guestSeatIndices(int seatCount) {
+    if (seatCount <= 1) return const [];
+    return List.generate(seatCount - 1, (i) => seatCount - 1 - i);
+  }
+
+  static int? firstVacantGuestSeatIndex(List<LiveSeat> seats) {
+    if (seats.isEmpty) return null;
+    for (final index in guestSeatIndices(seats.length)) {
+      if (index < seats.length && seats[index].status == LiveSeatStatus.empty) {
+        return index;
+      }
+    }
+    return null;
+  }
 }

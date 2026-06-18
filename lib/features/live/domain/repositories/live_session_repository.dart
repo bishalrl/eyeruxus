@@ -3,8 +3,10 @@ import '../entities/live_session_entities.dart';
 abstract class LiveSessionRepository {
   Future<LiveRoomSession> joinSession({
     required String roomId,
+    String? partyId,
     String? password,
     LiveParticipantRole role,
+    LiveJoinIntent joinIntent,
   });
 
   Future<LiveRoomSession> createSession(CreateLiveRoomRequest request);

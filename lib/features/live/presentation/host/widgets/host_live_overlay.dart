@@ -10,6 +10,8 @@ import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_like_burst_layer.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/interactions/live_room_bottom_bar.dart';
 import 'package:eye_rex_us/features/live/presentation/widgets/moderation/live_host_controls_sheet.dart';
+import 'package:eye_rex_us/features/live/presentation/widgets/platform/live_connection_banner.dart';
+import 'package:eye_rex_us/features/live/presentation/widgets/platform/live_pk_battle_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -154,6 +156,15 @@ class HostLiveOverlay extends StatelessWidget {
           return Positioned.fill(
             child: Stack(
               children: [
+                if (state.session?.meta.pkBattle != null)
+                  LivePkBattleOverlay(
+                    pk: state.session!.meta.pkBattle!,
+                    hostName: state.session!.host.name,
+                  ),
+                LiveConnectionBanner(
+                  quality: state.connectionQuality,
+                  onRetry: cubit.rejoin,
+                ),
                 IgnorePointer(child: LiveLikeBurstLayer(bursts: state.likeBursts)),
                 if (state.seatRequests.isNotEmpty)
                   Positioned(

@@ -1,6 +1,8 @@
+import 'package:eye_rex_us/app/di/injection.dart';
 import 'package:eye_rex_us/app/router/app_router.dart';
 import 'package:eye_rex_us/app/router/app_route_names.dart';
 import 'package:eye_rex_us/core/extensions/context_extensions.dart';
+import 'package:eye_rex_us/features/live/domain/repositories/live_platform_repository.dart';
 import 'package:eye_rex_us/features/store/domain/entities/store_product.dart';
 import 'package:eye_rex_us/features/store/presentation/bloc/store_bloc.dart';
 import 'package:eye_rex_us/shared/widgets/feature_state_views.dart';
@@ -344,6 +346,22 @@ class _HotProductCard extends StatelessWidget {
 
   final StoreProduct product;
 
+  Future<void> _purchase(BuildContext context) async {
+    final ok = await sl<LivePlatformRepository>().purchaseStoreProduct(
+      productId: product.id,
+      coinCost: product.price,
+      productName: product.name,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? 'Purchased ${product.name}' : 'Not enough coins',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -388,7 +406,7 @@ class _HotProductCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {},
+                    onPressed: () => _purchase(context),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: colors.storeGold),
                       foregroundColor: colors.storeGold,
@@ -400,7 +418,7 @@ class _HotProductCard extends StatelessWidget {
                 const SizedBox(width: 5),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () => _purchase(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.storeGold,
                       foregroundColor: colors.onPrimary,

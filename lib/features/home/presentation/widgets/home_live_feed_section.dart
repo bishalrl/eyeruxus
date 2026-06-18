@@ -48,10 +48,7 @@ class HomeLiveFeedSection extends StatelessWidget {
                 ),
               ),
               Spacer(),
-              Text(
-                'Swipe for more rooms',
-                style: TextStyle(color: HomeColors.textGrey, fontSize: 11),
-              ),
+             
             ],
           ),
         ),

@@ -15,16 +15,22 @@ class LiveRoomInteractionScope extends StatelessWidget {
     required this.child,
     this.role = LiveParticipantRole.viewer,
     this.instantJoinSeat = false,
+    this.requestSeatOnJoin = false,
     this.preferredSeatIndex,
+    this.partyId,
     this.partyTitle,
+    this.roomPassword,
   });
 
   final String roomId;
   final Widget child;
   final LiveParticipantRole role;
   final bool instantJoinSeat;
+  final bool requestSeatOnJoin;
   final int? preferredSeatIndex;
+  final String? partyId;
   final String? partyTitle;
+  final String? roomPassword;
 
   bool get _isHostExperience => role == LiveParticipantRole.host;
 
@@ -39,12 +45,17 @@ class LiveRoomInteractionScope extends StatelessWidget {
           create: (context) => LiveRoomInteractionCubit(
             roomId: roomId,
             sessionRepository: sl(),
+            platformRepository: sl(),
+            economyService: sl(),
             mediaCubit: context.read<LiveMediaCubit>(),
             seatCount: LiveRoomInteractionCubit.seatCountForRoom(roomId),
             role: role,
             instantJoinSeat: instantJoinSeat,
+            requestSeatOnJoin: requestSeatOnJoin,
             preferredSeatIndex: preferredSeatIndex,
+            partyId: partyId,
             partyTitle: partyTitle,
+            roomPassword: roomPassword,
           ),
         ),
       ],

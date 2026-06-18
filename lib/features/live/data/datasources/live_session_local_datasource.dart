@@ -1,11 +1,15 @@
 import 'dart:math';
 
+import 'package:eye_rex_us/features/live/domain/entities/live_platform_entities.dart';
 import 'package:eye_rex_us/features/live/domain/entities/live_session_entities.dart';
+import 'package:eye_rex_us/features/live/domain/live_session_key.dart';
 import 'package:eye_rex_us/features/live/presentation/layouts/live_layout_registry.dart';
 
 abstract class LiveSessionLocalDataSource {
   Future<LiveRoomSession> loadSession({
     required String roomId,
+    String? partyId,
+    String? password,
     LiveParticipantRole role,
   });
 
@@ -18,6 +22,10 @@ abstract class LiveSessionLocalDataSource {
   Future<List<LiveRoomListing>> listRooms();
 
   Future<LiveRoomSession> saveSession(LiveRoomSession session);
+
+  Future<LiveRoomSession> saveSessionByKey(String sessionKey, LiveRoomSession session);
+
+  LiveRoomSession clearLocalViewerState(LiveRoomSession session);
 }
 
 class LiveSessionLocalDataSourceImpl implements LiveSessionLocalDataSource {
@@ -44,24 +52,53 @@ class LiveSessionLocalDataSourceImpl implements LiveSessionLocalDataSource {
   @override
   Future<LiveRoomSession> loadSession({
     required String roomId,
+    String? partyId,
+    String? password,
     LiveParticipantRole role = LiveParticipantRole.viewer,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 280));
-    final existing = _sessions[roomId];
+    final sessionKey = LiveSessionKey.forRoom(roomId: roomId, partyId: partyId);
+    final existing = _sessions[sessionKey];
     if (existing != null) {
+      if (existing.privacy == LiveRoomPrivacy.passwordProtected) {
+        final expected = existing.meta.roomPassword;
+        if (expected != null && expected.isNotEmpty && expected != password) {
+          throw StateError('Invalid room password');
+        }
+      }
       final resolved = role == LiveParticipantRole.host
           ? _applyCurrentUserAsHost(existing)
           : existing.copyWith(currentUserRole: role);
-      return _storeSession(roomId, resolved);
+      return _storeSession(sessionKey, resolved);
     }
-    final session = _buildDefaultSession(roomId, role);
-    return _storeSession(roomId, session);
+    final session = _buildDefaultSession(
+      roomId,
+      role,
+      partyId: partyId,
+    );
+    if (session.privacy == LiveRoomPrivacy.passwordProtected &&
+        password != null &&
+        password.isNotEmpty) {
+      return _storeSession(
+        sessionKey,
+        session.copyWith(
+          meta: session.meta.copyWith(roomPassword: () => password),
+        ),
+      );
+    }
+    return _storeSession(sessionKey, session);
   }
 
-  LiveRoomSession _storeSession(String roomId, LiveRoomSession session) {
-    _sessions[roomId] = session;
-    _sessions[session.id] = session;
-    return session;
+  LiveRoomSession _storeSession(String sessionKey, LiveRoomSession session) {
+    final peak = session.viewerCount > session.meta.peakViewerCount
+        ? session.viewerCount
+        : session.meta.peakViewerCount;
+    final withPeak = session.copyWith(
+      meta: session.meta.copyWith(peakViewerCount: peak),
+    );
+    _sessions[sessionKey] = withPeak;
+    _sessions[withPeak.id] = withPeak;
+    return withPeak;
   }
 
   @override
@@ -135,8 +172,50 @@ class LiveSessionLocalDataSourceImpl implements LiveSessionLocalDataSource {
       settings: const LiveRoomSettings(),
       coverImageUrl: request.coverImageUrl ?? _covers.first,
       currentUserRole: LiveParticipantRole.host,
+      meta: LiveSessionMeta(
+        startedAt: DateTime.now(),
+        roomPassword: request.password,
+        voiceOnly: request.category == LiveRoomCategory.chatting &&
+            request.seatCount <= 2,
+        languageCode: request.language.toLowerCase().startsWith('en') ? 'en' : 'hi',
+      ),
     );
     return _storeSession(roomId, session);
+  }
+
+  @override
+  Future<LiveRoomSession> saveSessionByKey(
+    String sessionKey,
+    LiveRoomSession session,
+  ) async {
+    return _storeSession(sessionKey, session);
+  }
+
+  @override
+  LiveRoomSession clearLocalViewerState(LiveRoomSession session) {
+    final myRequestIndexes = session.seatRequests
+        .where((r) => r.userId == 'me')
+        .map((r) => r.seatIndex)
+        .toSet();
+
+    final seats = session.seats.map((seat) {
+      if (seat.participant?.id == 'me') {
+        return LiveSeat(index: seat.index, status: LiveSeatStatus.empty);
+      }
+      if (myRequestIndexes.contains(seat.index) &&
+          seat.status == LiveSeatStatus.requested) {
+        return LiveSeat(index: seat.index, status: LiveSeatStatus.empty);
+      }
+      return seat;
+    }).toList();
+
+    return session.copyWith(
+      seats: seats,
+      seatRequests:
+          session.seatRequests.where((r) => r.userId != 'me').toList(),
+      participants: session.participants.where((p) => p.id != 'me').toList(),
+      currentUserRole: LiveParticipantRole.viewer,
+    );
   }
 
   @override
@@ -176,13 +255,15 @@ class LiveSessionLocalDataSourceImpl implements LiveSessionLocalDataSource {
   @override
   Future<LiveRoomSession> saveSession(LiveRoomSession session) async {
     final roomId = LiveLayoutRegistry.roomIdForSeatCount(session.seatCount);
-    return _storeSession(roomId, session);
+    final key = LiveSessionKey.forRoom(roomId: roomId, partyId: session.meta.partyId);
+    return _storeSession(key, session);
   }
 
   LiveRoomSession _buildDefaultSession(
     String roomId,
-    LiveParticipantRole role,
-  ) {
+    LiveParticipantRole role, {
+    String? partyId,
+  }) {
     final seatCount = LiveLayoutRegistry.seatCountForRoom(roomId);
 
     if (role == LiveParticipantRole.host) {
@@ -246,16 +327,17 @@ class LiveSessionLocalDataSourceImpl implements LiveSessionLocalDataSource {
       return LiveSeat(index: i, status: LiveSeatStatus.empty);
     });
 
+    final viewers = 240 + _random.nextInt(1200);
     return LiveRoomSession(
-      id: 'session_$roomId',
-      title: _titleFor(seatCount),
+      id: partyId != null ? 'session_party_${partyId}_$roomId' : 'session_$roomId',
+      title: partyId != null ? 'Party Room' : _titleFor(seatCount),
       description: 'Welcome to the live room. Chat, send gifts, and take a seat!',
       host: host,
       seatCount: seatCount,
-      category: LiveRoomCategory.chatting,
+      category: roomId == 'pk' ? LiveRoomCategory.pk : LiveRoomCategory.chatting,
       privacy: LiveRoomPrivacy.publicRoom,
       language: 'English',
-      viewerCount: 240 + _random.nextInt(1200),
+      viewerCount: viewers,
       likeCount: 50 + _random.nextInt(500),
       seats: updatedSeats,
       participants: occupied,
@@ -264,6 +346,13 @@ class LiveSessionLocalDataSourceImpl implements LiveSessionLocalDataSource {
       coverImageUrl: _covers[_random.nextInt(_covers.length)],
       activeSpeakerId: host.id,
       currentUserRole: role,
+      meta: LiveSessionMeta(
+        startedAt: DateTime.now().subtract(const Duration(minutes: 3)),
+        partyId: partyId,
+        peakViewerCount: viewers,
+        countryCode: 'IN',
+        isPromoted: _random.nextBool(),
+      ),
     );
   }
 
