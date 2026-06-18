@@ -1,0 +1,57 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+
+android {
+    namespace "com.example.eye_rex_us"
+
+    compileSdk 36
+    ndkVersion = flutter.ndkVersion
+
+    defaultConfig {
+        applicationId "com.example.eye_rex_us"
+        minSdkVersion 24
+        targetSdkVersion 35
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+        multiDexEnabled true
+    }
+
+    // Build Java/Kotlin for JVM 17 (runs under JDK 24)
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    buildTypes {
+        release {
+            // TODO: set up your real signing config
+            signingConfig signingConfigs.debug
+            // enable shrinking if you need:
+            // minifyEnabled true
+            // shrinkResources true
+            // proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    implementation 'com.google.android.gms:play-services-auth-api-phone:18.0.1'
+}
